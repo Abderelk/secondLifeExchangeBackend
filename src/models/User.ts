@@ -8,7 +8,7 @@ export interface IUser {
   email: string;
   password: string;
   phone?: string;
-  
+
   // Localisation
   address?: {
     street?: string;
@@ -16,17 +16,17 @@ export interface IUser {
     postalCode: string;
     country: string;
   };
-  
+
   // Préférences
   interests: string[]; // Catégories d'intérêt (vêtements, électronique, livres, etc.)
   bio?: string;
   avatar?: string;
-  
+
   // Statistiques
   impactScore: number; // Score d'impact écologique
   totalExchanges: number;
   totalObjectsShared: number;
-  
+
   // Paramètres
   notifications: {
     email: boolean;
@@ -34,19 +34,23 @@ export interface IUser {
     newMessages: boolean;
     exchangeUpdates: boolean;
   };
-  
+
   // Système
   role: 'user' | 'admin' | 'moderator';
   isVerified: boolean;
   createdAt: Date;
   updatedAt: Date;
+
+  // Réinitialisation mot de passe
+  passwordResetToken?: string;
+  passwordResetExpires?: Date;
 }
 
 export interface IUserDocument extends IUser, Document {
   comparePassword(candidatePassword: string): Promise<boolean>;
 }
 
-interface IUserModel extends Model<IUserDocument> {}
+interface IUserModel extends Model<IUserDocument> { }
 
 const UserSchema = new Schema<IUserDocument, IUserModel>({
   // Informations de base
@@ -79,7 +83,7 @@ const UserSchema = new Schema<IUserDocument, IUserModel>({
     type: String,
     trim: true
   },
-  
+
   // Localisation
   address: {
     street: String,
@@ -96,7 +100,7 @@ const UserSchema = new Schema<IUserDocument, IUserModel>({
       default: 'France'
     }
   },
-  
+
   // Préférences
   interests: {
     type: [String],
@@ -124,7 +128,7 @@ const UserSchema = new Schema<IUserDocument, IUserModel>({
     type: String,
     default: ''
   },
-  
+
   // Statistiques
   impactScore: {
     type: Number,
@@ -138,7 +142,7 @@ const UserSchema = new Schema<IUserDocument, IUserModel>({
     type: Number,
     default: 0
   },
-  
+
   // Paramètres
   notifications: {
     email: {
@@ -158,7 +162,7 @@ const UserSchema = new Schema<IUserDocument, IUserModel>({
       default: true
     }
   },
-  
+
   // Système
   role: {
     type: String,
@@ -176,21 +180,32 @@ const UserSchema = new Schema<IUserDocument, IUserModel>({
   updatedAt: {
     type: Date,
     default: Date.now
+  },
+
+  // Réinitialisation mot de passe
+  passwordResetToken: {
+    type: String,
+    default: undefined
+  },
+  passwordResetExpires: {
+    type: Date,
+    default: undefined
   }
 }, {
   timestamps: true
 });
 
 // Hash le mot de passe avant de sauvegarder
-UserSchema.pre<IUserDocument>('save', async function(next) {
-  if (!this.isModified('password')) return ;
-  
+UserSchema.pre<IUserDocument>('save', async function (next) {
+  if (!this.isModified('password')) return next();
+
   const salt = await bcrypt.genSalt(10);
   this.password = await bcrypt.hash(this.password, salt);
+  next();
 });
 
 // Méthode pour comparer les mots de passe
-UserSchema.methods.comparePassword = async function(
+UserSchema.methods.comparePassword = async function (
   this: IUserDocument,
   candidatePassword: string
 ): Promise<boolean> {
