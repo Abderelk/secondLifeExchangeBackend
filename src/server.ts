@@ -9,7 +9,7 @@ import homeRoutes from './routes/homeRoutes';
 import itemRoutes from './routes/itemRoutes';
 
 const app = express();
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 8080;
 
 // CORS - Version simplifiée qui fonctionne
 app.use(cors({
