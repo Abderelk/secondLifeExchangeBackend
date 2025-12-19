@@ -5,6 +5,8 @@ import express from 'express';
 import cors from 'cors';
 import mongoose from 'mongoose';
 import authRoutes from './routes/authRoutes';
+import homeRoutes from './routes/homeRoutes';
+import itemRoutes from './routes/itemRoutes';
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -32,7 +34,8 @@ app.get('/api', (req, res) => {
 });
 
 app.use('/api/auth', authRoutes);
-
+app.use('/api/home', homeRoutes);
+app.use('/api/items', itemRoutes);
 // Error handler
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
   console.error('❌ Erreur:', err);
