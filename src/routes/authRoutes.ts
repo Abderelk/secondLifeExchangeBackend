@@ -6,7 +6,8 @@ import {
     login,
     getMe,
     forgotPassword,
-    resetPassword
+    resetPassword,
+    updateProfile
 } from '../controllers/authController';
 import { protect } from '../middleware/auth';
 
@@ -17,7 +18,7 @@ router.post('/register', register);
 router.post('/login', login);
 router.post('/forgot-password', forgotPassword);
 router.post('/reset-password', resetPassword);
-
+router.put('/profile', protect, updateProfile);
 // Routes protégées
 router.get('/me', protect, getMe);
 

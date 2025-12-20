@@ -12,18 +12,18 @@ const generateToken = (userId: string): string => {
   if (!secret) {
     throw new Error('JWT_SECRET is not defined');
   }
-  
+
   return jwt.sign({ id: userId }, secret, { expiresIn: '7d' });
 };
 
 export const register = async (req: Request, res: Response): Promise<void> => {
   try {
     console.log('📝 Register request:', req.body);
-    
-    const { 
-      firstName, 
-      lastName, 
-      email, 
+
+    const {
+      firstName,
+      lastName,
+      email,
       password,
       phone,
       address,
@@ -33,18 +33,18 @@ export const register = async (req: Request, res: Response): Promise<void> => {
 
     // Validation des champs requis
     if (!firstName || !lastName || !email || !password) {
-      res.status(400).json({ 
-        success: false, 
-        message: 'Veuillez remplir tous les champs obligatoires' 
+      res.status(400).json({
+        success: false,
+        message: 'Veuillez remplir tous les champs obligatoires'
       });
       return;
     }
 
     // Validation de l'adresse
     if (!address?.city || !address?.postalCode) {
-      res.status(400).json({ 
-        success: false, 
-        message: 'La ville et le code postal sont requis' 
+      res.status(400).json({
+        success: false,
+        message: 'La ville et le code postal sont requis'
       });
       return;
     }
@@ -53,19 +53,19 @@ export const register = async (req: Request, res: Response): Promise<void> => {
     const userExists = await User.findOne({ email });
     if (userExists) {
       console.log('⚠️ Email déjà utilisé:', email);
-      res.status(400).json({ 
-        success: false, 
-        message: 'Cet email est déjà utilisé' 
+      res.status(400).json({
+        success: false,
+        message: 'Cet email est déjà utilisé'
       });
       return;
     }
 
     // Créer l'utilisateur
     console.log('🔨 Création utilisateur...');
-    const user = await User.create({ 
+    const user = await User.create({
       firstName,
       lastName,
-      email, 
+      email,
       password,
       phone,
       address,
@@ -73,7 +73,7 @@ export const register = async (req: Request, res: Response): Promise<void> => {
       bio
     });
     console.log('✅ Utilisateur créé:', user._id);
-    
+
     const token = generateToken(user._id.toString());
 
     res.status(201).json({
@@ -97,43 +97,43 @@ export const register = async (req: Request, res: Response): Promise<void> => {
     const err = error as Error;
     console.error('❌ Erreur register:', err.message);
     console.error('Stack:', err.stack);
-    res.status(500).json({ 
-      success: false, 
-      message: 'Erreur serveur', 
-      error: err.message 
+    res.status(500).json({
+      success: false,
+      message: 'Erreur serveur',
+      error: err.message
     });
   }
 };
 
 export const login = async (req: Request, res: Response): Promise<void> => {
   try {
-    
+
     console.log('🔐 Login request:', req.body.email);
-    
+
     const { email, password } = req.body;
 
     if (!email || !password) {
-      res.status(400).json({ 
-        success: false, 
-        message: 'Veuillez remplir tous les champs' 
+      res.status(400).json({
+        success: false,
+        message: 'Veuillez remplir tous les champs'
       });
       return;
     }
 
     const user = await User.findOne({ email });
     if (!user) {
-      res.status(401).json({ 
-        success: false, 
-        message: 'Email ou mot de passe incorrect' 
+      res.status(401).json({
+        success: false,
+        message: 'Email ou mot de passe incorrect'
       });
       return;
     }
 
     const isPasswordValid = await user.comparePassword(password);
     if (!isPasswordValid) {
-      res.status(401).json({ 
-        success: false, 
-        message: 'Email ou mot de passe incorrect' 
+      res.status(401).json({
+        success: false,
+        message: 'Email ou mot de passe incorrect'
       });
       return;
     }
@@ -166,10 +166,10 @@ export const login = async (req: Request, res: Response): Promise<void> => {
   } catch (error: unknown) {
     const err = error as Error;
     console.error('❌ Erreur login:', err.message);
-    res.status(500).json({ 
-      success: false, 
-      message: 'Erreur serveur', 
-      error: err.message 
+    res.status(500).json({
+      success: false,
+      message: 'Erreur serveur',
+      error: err.message
     });
   }
 };
@@ -177,26 +177,26 @@ export const login = async (req: Request, res: Response): Promise<void> => {
 export const getMe = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const user = await User.findById(req.user?.id).select('-password');
-    
+
     if (!user) {
-      res.status(404).json({ 
-        success: false, 
-        message: 'Utilisateur non trouvé' 
+      res.status(404).json({
+        success: false,
+        message: 'Utilisateur non trouvé'
       });
       return;
     }
 
-    res.json({ 
-      success: true, 
-      user 
+    res.json({
+      success: true,
+      user
     });
   } catch (error: unknown) {
     const err = error as Error;
     console.error('❌ Erreur getMe:', err.message);
-    res.status(500).json({ 
-      success: false, 
-      message: 'Erreur serveur', 
-      error: err.message 
+    res.status(500).json({
+      success: false,
+      message: 'Erreur serveur',
+      error: err.message
     });
   }
 };
@@ -218,7 +218,7 @@ export const forgotPassword = async (req: Request, res: Response): Promise<void>
 
     // Trouver l'utilisateur
     const user = await User.findOne({ email: email.toLowerCase() });
-    
+
     // Toujours répondre avec succès même si l'email n'existe pas (sécurité)
     if (!user) {
       console.log('⚠️ Email non trouvé:', email);
@@ -231,7 +231,7 @@ export const forgotPassword = async (req: Request, res: Response): Promise<void>
 
     // Générer un token de réinitialisation
     const resetToken = crypto.randomBytes(32).toString('hex');
-    
+
     // Hash le token avant de le stocker (sécurité)
     const hashedToken = crypto
       .createHash('sha256')
@@ -247,7 +247,7 @@ export const forgotPassword = async (req: Request, res: Response): Promise<void>
     try {
       await sendPasswordResetEmail(user.email, resetToken, user.firstName);
       console.log('✅ Email de réinitialisation envoyé à:', email);
-      
+
       res.json({
         success: true,
         message: 'Un email de réinitialisation a été envoyé à votre adresse'
@@ -257,7 +257,7 @@ export const forgotPassword = async (req: Request, res: Response): Promise<void>
       user.passwordResetToken = undefined;
       user.passwordResetExpires = undefined;
       await user.save({ validateBeforeSave: false });
-      
+
       console.error('❌ Erreur envoi email:', emailError);
       res.status(500).json({
         success: false,
@@ -366,5 +366,57 @@ export const resetPassword = async (req: Request, res: Response): Promise<void> 
       message: 'Erreur serveur',
       error: err.message
     });
+  }
+};
+
+
+export const updateProfile = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const userId = req.user?.id;
+
+    if (!userId) {
+      res.status(401).json({ success: false, message: 'Non autorisé' });
+      return;
+    }
+
+    const { firstName, lastName, bio, address, avatar } = req.body;
+
+    const updateData: Record<string, unknown> = {};
+    if (firstName) updateData.firstName = firstName;
+    if (lastName) updateData.lastName = lastName;
+    if (bio !== undefined) updateData.bio = bio;
+    if (avatar !== undefined) updateData.avatar = avatar;
+    if (address) updateData.address = address;
+
+    const user = await User.findByIdAndUpdate(
+      userId,
+      { $set: updateData },
+      { new: true, runValidators: true }
+    ).select('-password');
+
+    if (!user) {
+      res.status(404).json({ success: false, message: 'Utilisateur non trouvé' });
+      return;
+    }
+
+    res.json({
+      success: true,
+      message: 'Profil mis à jour avec succès',
+      data: {
+        id: user._id,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        email: user.email,
+        avatar: user.avatar,
+        bio: user.bio,
+        city: user.address?.city,
+        postalCode: user.address?.postalCode,
+        createdAt: user.createdAt,
+      },
+    });
+  } catch (error: unknown) {
+    const err = error as Error;
+    console.error('❌ Erreur updateProfile:', err.message);
+    res.status(500).json({ success: false, message: 'Erreur serveur', error: err.message });
   }
 };
