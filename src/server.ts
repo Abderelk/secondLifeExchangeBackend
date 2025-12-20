@@ -8,6 +8,7 @@ import authRoutes from './routes/authRoutes';
 import homeRoutes from './routes/homeRoutes';
 import itemRoutes from './routes/itemRoutes';
 import exchangeRoutes from './routes/exchangeRoutes';
+import suggestionsRoutes from './routes/suggestionsRoutes';
 
 const app = express();
 const PORT = Number(process.env.PORT) || 8080;
@@ -56,6 +57,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/home', homeRoutes);
 app.use('/api/items', itemRoutes);
 app.use('/api/exchanges', exchangeRoutes);
+app.use('/api/suggestions', suggestionsRoutes);
 
 /**
  * --------------------
