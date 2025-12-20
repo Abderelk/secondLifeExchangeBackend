@@ -7,6 +7,7 @@ import mongoose from 'mongoose';
 import authRoutes from './routes/authRoutes';
 import homeRoutes from './routes/homeRoutes';
 import itemRoutes from './routes/itemRoutes';
+import exchangeRoutes from './routes/exchangeRoutes';
 
 const app = express();
 const PORT = Number(process.env.PORT) || 8080;
@@ -54,6 +55,7 @@ app.get('/api', (_req, res) => {
 app.use('/api/auth', authRoutes);
 app.use('/api/home', homeRoutes);
 app.use('/api/items', itemRoutes);
+app.use('/api/exchanges', exchangeRoutes);
 
 /**
  * --------------------
