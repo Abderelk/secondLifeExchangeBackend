@@ -5,6 +5,9 @@ import Exchange from '../models/exchange';
 import Item from '../models/item';
 import User from '../models/User';
 import { AuthRequest } from '../types';
+import Conversation from '../models/conversation';
+import Message from '../models/message';
+
 
 // Créer une proposition d'échange
 export const createExchange = async (req: AuthRequest, res: Response): Promise<void> => {
@@ -78,6 +81,34 @@ export const createExchange = async (req: AuthRequest, res: Response): Promise<v
       message,
     });
 
+    let conversation = await Conversation.findOne({
+      participants: { $all: [userId, requestedItem.owner.toString()] },
+      itemRequested: requestedItemId,
+    });
+
+    if (!conversation) {
+      conversation = await Conversation.create({
+        participants: [userId, requestedItem.owner],
+        exchange: exchange._id,
+        itemOffered: offeredItemIds && offeredItemIds.length > 0 ? offeredItemIds[0] : null,
+        itemRequested: requestedItemId,
+        lastmessage: message || "Nouvelle proposition d'échange",
+        lastmessageAt: new Date(),
+        unreadCount: new Map([
+          [requestedItem.owner.toString(), 1],
+          [userId, 0],
+        ]),
+      });
+
+      // Créer le premier message
+      if (message) {
+        await message.create({
+          conversation: conversation._id,
+          sender: userId,
+          content: message,
+        });
+      }
+    }
     // Populer les données pour la réponse
     const populatedExchange = await Exchange.findById(exchange._id)
       .populate('requester', 'firstName lastName avatar')
@@ -183,7 +214,7 @@ export const respondToExchange = async (req: AuthRequest, res: Response): Promis
   try {
     const userId = req.user?.id;
     const { id } = req.params;
-    const { action, responseMessage, meetingDetails } = req.body;
+    const { action, responsemessage, meetingDetails } = req.body;
 
     const exchange = await Exchange.findById(id);
 
@@ -227,7 +258,7 @@ export const respondToExchange = async (req: AuthRequest, res: Response): Promis
       return;
     }
 
-    exchange.responseMessage = responseMessage;
+    exchange.responseMessage = responsemessage;
     exchange.respondedAt = new Date();
     await exchange.save();
 
