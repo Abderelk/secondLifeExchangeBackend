@@ -5,6 +5,7 @@ import mongoose from 'mongoose';
 import { AuthRequest } from '../types';
 import Conversation from '../models/conversation';
 import Message from '../models/message';
+import { emitNewMessage, emitConversationUpdate } from '../services/socketService';
 
 // Types pour les documents populés
 interface PopulatedParticipant {
@@ -71,13 +72,12 @@ export const getConversations = async (req: AuthRequest, res: Response): Promise
         const formattedConversations = conversations.map((conv) => {
             // Trouver l'autre participant
             const otherParticipant = conv.participants.find(
-                (p) => p._id.toString() !== userId
+                (p) => p._id.toString() !== userId.toString()
             );
 
             // Récupérer le nombre de messages non lus pour cet utilisateur
             let unreadCount = 0;
             if (conv.unreadCount) {
-                // unreadCount peut être un objet simple après lean()
                 const unreadData = conv.unreadCount as unknown as Record<string, number>;
                 unreadCount = unreadData[userId] || 0;
             }
@@ -126,6 +126,9 @@ export const getMessages = async (req: AuthRequest, res: Response): Promise<void
             return;
         }
 
+        // Normaliser l'ID utilisateur
+        const currentUserId = userId.toString();
+
         // Vérifier que l'utilisateur fait partie de la conversation
         const conversation = await Conversation.findOne({
             _id: conversationId,
@@ -160,18 +163,23 @@ export const getMessages = async (req: AuthRequest, res: Response): Promise<void
         );
 
         // Formater les messages
-        const formattedMessages = messages.map((msg) => ({
-            id: msg._id.toString(),
-            senderId: msg.sender._id.toString(),
-            senderName: `${msg.sender.firstName || ''} ${msg.sender.lastName || ''}`.trim(),
-            content: msg.content,
-            timestamp: msg.createdAt,
-            isOwn: msg.sender._id.toString() === userId,
-        }));
+        const formattedMessages = messages.map((msg) => {
+            const senderId = msg.sender._id.toString();
+            const isOwn = senderId === currentUserId;
+
+            return {
+                id: msg._id.toString(),
+                senderId,
+                senderName: `${msg.sender.firstName || ''} ${msg.sender.lastName || ''}`.trim(),
+                content: msg.content,
+                timestamp: msg.createdAt,
+                isOwn,
+            };
+        });
 
         // Trouver l'autre participant
         const otherParticipant = conversation.participants.find(
-            (p) => p._id.toString() !== userId
+            (p) => p._id.toString() !== currentUserId
         );
 
         res.json({
@@ -201,6 +209,7 @@ export const getMessages = async (req: AuthRequest, res: Response): Promise<void
                     } : null,
                 },
                 messages: formattedMessages,
+                currentUserId, // Ajouter l'ID de l'utilisateur actuel pour debug
             },
         });
     } catch (error: unknown) {
@@ -227,6 +236,8 @@ export const sendMessage = async (req: AuthRequest, res: Response): Promise<void
             return;
         }
 
+        const currentUserId = userId.toString();
+
         // Vérifier que l'utilisateur fait partie de la conversation
         const conversation = await Conversation.findOne({
             _id: conversationId,
@@ -247,7 +258,7 @@ export const sendMessage = async (req: AuthRequest, res: Response): Promise<void
 
         // Mettre à jour la conversation
         const otherParticipantId = conversation.participants.find(
-            (p) => p.toString() !== userId
+            (p) => p.toString() !== currentUserId
         )?.toString();
 
         if (otherParticipantId) {
@@ -267,17 +278,35 @@ export const sendMessage = async (req: AuthRequest, res: Response): Promise<void
             .populate('sender', 'firstName lastName avatar')
             .lean() as unknown as PopulatedMessage | null;
 
+        const messageData = {
+            id: message._id.toString(),
+            senderId: currentUserId,
+            senderName: populatedMessage?.sender
+                ? `${populatedMessage.sender.firstName || ''} ${populatedMessage.sender.lastName || ''}`.trim()
+                : '',
+            content: message.content,
+            timestamp: message.createdAt,
+        };
+
+        // 🔌 Émettre le message via WebSocket à tous les participants de la conversation
+        emitNewMessage(conversationId, messageData);
+
+        // 🔌 Notifier l'autre participant de la mise à jour de la conversation
+        if (otherParticipantId) {
+            const newUnreadCount = conversation.unreadCount?.get(otherParticipantId) || 1;
+            emitConversationUpdate(otherParticipantId, {
+                id: conversationId,
+                lastMessage: conversation.lastMessage || '',
+                lastMessageAt: conversation.lastMessageAt || new Date(),
+                unreadCount: newUnreadCount,
+            });
+        }
+
         res.status(201).json({
             success: true,
             data: {
-                id: message._id.toString(),
-                senderId: userId,
-                senderName: populatedMessage?.sender
-                    ? `${populatedMessage.sender.firstName || ''} ${populatedMessage.sender.lastName || ''}`.trim()
-                    : '',
-                content: message.content,
-                timestamp: message.createdAt,
-                isOwn: true,
+                ...messageData,
+                isOwn: true, // Le message qu'on vient d'envoyer est toujours le nôtre
             },
         });
     } catch (error: unknown) {
@@ -317,7 +346,7 @@ export const createConversation = async (req: AuthRequest, res: Response): Promi
         // Créer une nouvelle conversation
         const unreadCount = new Map<string, number>();
         unreadCount.set(participantId, 0);
-        unreadCount.set(userId, 0);
+        unreadCount.set(userId.toString(), 0);
 
         conversation = await Conversation.create({
             participants: [userId, participantId],
