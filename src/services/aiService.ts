@@ -46,7 +46,8 @@ export async function generateSuggestions(
     seasonContext: SeasonContext
 ): Promise<AISuggestions> {
     try {
-        const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+        const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+
 
         const prompt = `Tu es un assistant pour une plateforme d'échange d'objets de seconde main appelée "SecondLife Exchange". 
 Tu dois générer des suggestions personnalisées pour un utilisateur.

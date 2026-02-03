@@ -16,6 +16,8 @@ import homeRoutes from './routes/homeRoutes';
 import exchangeRoutes from './routes/exchangeRoutes';
 import messageRoutes from './routes/messageRoutes';
 import suggestionsRoutes from './routes/suggestionsRoutes';
+import themeRoutes from './routes/themeRoutes';
+import { initCronJobs } from './services/cronService';
 
 const app = express();
 const httpServer = createServer(app);
@@ -53,6 +55,7 @@ app.use('/api/home', homeRoutes);
 app.use('/api/exchanges', exchangeRoutes);
 app.use('/api/messages', messageRoutes);
 app.use('/api/suggestions', suggestionsRoutes);
+app.use('/api/themes', themeRoutes);
 
 // Error handler
 app.use((err: Error, req: express.Request, res: express.Response, _next: express.NextFunction) => {
@@ -70,6 +73,10 @@ mongoose
   .connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/secondlifeexchange')
   .then(() => {
     console.log('✅ MongoDB connecté');
+    
+    // Initialiser les tâches cron pour les notifications de thèmes
+    initCronJobs();
+    
     httpServer.listen(PORT, () => {
       console.log('='.repeat(50));
       console.log(`🚀 Serveur lancé sur http://localhost:${PORT}`);
@@ -88,8 +95,10 @@ mongoose
       console.log('   GET  /api/exchanges          - Mes échanges');
       console.log('   GET  /api/messages/conversations  - Mes conversations');
       console.log('   POST /api/messages/conversations/:id - Envoyer message');
-      console.log('   🔌  WebSocket events: authenticate, join_conversation, new_message');
-      console.log('');
+      console.log('   GET  /api/themes/current     - Thème actuel');
+      console.log('   GET  /api/themes/calendar    - Calendrier des thèmes');
+      console.log('   GET  /api/themes/upcoming    - Prochains thèmes');
+      console.log('   🔌  WebSocket events: message:new, conversation:updated');
     });
   })
   .catch((err) => {

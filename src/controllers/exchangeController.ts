@@ -4,10 +4,9 @@ import { Response } from 'express';
 import Exchange from '../models/exchange';
 import Item from '../models/item';
 import User from '../models/User';
-import { AuthRequest } from '../types';
 import Conversation from '../models/conversation';
 import Message from '../models/message';
-
+import { AuthRequest } from '../types';
 
 // Créer une proposition d'échange
 export const createExchange = async (req: AuthRequest, res: Response): Promise<void> => {
@@ -81,6 +80,7 @@ export const createExchange = async (req: AuthRequest, res: Response): Promise<v
       message,
     });
 
+    // Créer ou récupérer la conversation associée
     let conversation = await Conversation.findOne({
       participants: { $all: [userId, requestedItem.owner.toString()] },
       itemRequested: requestedItemId,
@@ -92,23 +92,41 @@ export const createExchange = async (req: AuthRequest, res: Response): Promise<v
         exchange: exchange._id,
         itemOffered: offeredItemIds && offeredItemIds.length > 0 ? offeredItemIds[0] : null,
         itemRequested: requestedItemId,
-        lastmessage: message || "Nouvelle proposition d'échange",
-        lastmessageAt: new Date(),
+        lastMessage: message || "Nouvelle proposition d'échange",
+        lastMessageAt: new Date(),
         unreadCount: new Map([
           [requestedItem.owner.toString(), 1],
           [userId, 0],
         ]),
       });
 
-      // Créer le premier message
+      // Créer le premier message si un message a été fourni
       if (message) {
-        await message.create({
+        await Message.create({
+          conversation: conversation._id,
+          sender: userId,
+          content: message,
+        });
+      }
+    } else {
+      // Mettre à jour la conversation existante
+      conversation.exchange = exchange._id;
+      conversation.lastMessage = message || "Nouvelle proposition d'échange";
+      conversation.lastMessageAt = new Date();
+      const currentUnread = conversation.unreadCount?.get(requestedItem.owner.toString()) || 0;
+      conversation.unreadCount?.set(requestedItem.owner.toString(), currentUnread + 1);
+      await conversation.save();
+
+      // Ajouter le message
+      if (message) {
+        await Message.create({
           conversation: conversation._id,
           sender: userId,
           content: message,
         });
       }
     }
+
     // Populer les données pour la réponse
     const populatedExchange = await Exchange.findById(exchange._id)
       .populate('requester', 'firstName lastName avatar')
@@ -120,6 +138,7 @@ export const createExchange = async (req: AuthRequest, res: Response): Promise<v
       success: true,
       message: "Proposition d'échange envoyée ! 🎉",
       data: populatedExchange,
+      conversationId: conversation._id,
     });
   } catch (error: unknown) {
     const err = error as Error;
@@ -214,7 +233,7 @@ export const respondToExchange = async (req: AuthRequest, res: Response): Promis
   try {
     const userId = req.user?.id;
     const { id } = req.params;
-    const { action, responsemessage, meetingDetails } = req.body;
+    const { action, responseMessage, meetingDetails } = req.body;
 
     const exchange = await Exchange.findById(id);
 
@@ -258,7 +277,7 @@ export const respondToExchange = async (req: AuthRequest, res: Response): Promis
       return;
     }
 
-    exchange.responseMessage = responsemessage;
+    exchange.responseMessage = responseMessage;
     exchange.respondedAt = new Date();
     await exchange.save();
 
