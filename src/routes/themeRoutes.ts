@@ -1,34 +1,30 @@
-// src/routes/themeRoutes.ts
+// BACKEND/src/routes/themeRoutes.ts
 
 import express from 'express';
 import {
+    getAllThemes,
     getCurrentTheme,
-    getThemeCalendar,
+    getCalendar,
     getUpcomingThemes,
+    getThemeById,
     createTheme,
     updateTheme,
     deleteTheme,
-    sendThemeNotifications,
-    updateNotificationPreferences,
-    getNotificationPreferences,
 } from '../controllers/themeController';
 import { protect } from '../middleware/auth';
 
 const router = express.Router();
 
 // Routes publiques
+router.get('/', getAllThemes);
 router.get('/current', getCurrentTheme);
-router.get('/calendar', getThemeCalendar);
+router.get('/calendar', getCalendar);
 router.get('/upcoming', getUpcomingThemes);
+router.get('/:id', getThemeById);
 
-// Routes protégées (utilisateur connecté)
-router.get('/notifications/preferences', protect, getNotificationPreferences);
-router.put('/notifications/preferences', protect, updateNotificationPreferences);
-
-// Routes admin
+// Routes admin (protégées)
 router.post('/', protect, createTheme);
 router.put('/:id', protect, updateTheme);
 router.delete('/:id', protect, deleteTheme);
-router.post('/:themeId/notify', protect, sendThemeNotifications);
 
 export default router;

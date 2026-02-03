@@ -1,161 +1,322 @@
-// src/scripts/seedThemes.ts
-// Exécuter avec: npx ts-node src/scripts/seedThemes.ts
+// BACKEND/src/scripts/seedThemes.ts
+
+/**
+ * Script de seed pour les thèmes hebdomadaires
+ * Usage: npx ts-node src/scripts/seedThemes.ts
+ * Avec --clean pour supprimer les anciens thèmes: npx ts-node src/scripts/seedThemes.ts --clean
+ */
 
 import mongoose from 'mongoose';
 import dotenv from 'dotenv';
+import path from 'path';
 
-dotenv.config();
+// Charger les variables d'environnement
+dotenv.config({ path: path.join(__dirname, '../../.env') });
 
-import WeeklyTheme from '../models/weeklyTheme';
+// Import du modèle Theme
+import Theme from '../models/theme';
 
-const MONGODB_URI = process.env.MONGODB_URI || '';
-
-// Fonction pour obtenir le lundi d'une semaine donnée
-const getMonday = (weeksFromNow: number): Date => {
-    const now = new Date();
-    const currentDay = now.getDay();
-    const diff = now.getDate() - currentDay + (currentDay === 0 ? -6 : 1); // Ajuster si dimanche
-    const monday = new Date(now.setDate(diff));
-    monday.setDate(monday.getDate() + (weeksFromNow * 7));
-    monday.setHours(0, 0, 0, 0);
-    return monday;
+// Connexion à MongoDB
+const connectDB = async () => {
+    try {
+        const conn = await mongoose.connect(process.env.MONGODB_URI as string);
+        console.log(`✅ MongoDB connecté: ${conn.connection.host}`);
+    } catch (error) {
+        console.error('❌ Erreur connexion MongoDB:', error);
+        process.exit(1);
+    }
 };
 
-// Fonction pour obtenir le dimanche d'une semaine
-const getSunday = (monday: Date): Date => {
+// Helper pour calculer les dates d'une semaine
+const getWeekDates = (year: number, weekNumber: number) => {
+    // Trouver le premier lundi de l'année
+    const jan1 = new Date(year, 0, 1);
+    const daysToFirstMonday = (8 - jan1.getDay()) % 7;
+    const firstMonday = new Date(year, 0, 1 + daysToFirstMonday);
+
+    // Calculer le lundi de la semaine demandée
+    const monday = new Date(firstMonday);
+    monday.setDate(firstMonday.getDate() + (weekNumber - 1) * 7);
+
+    // Le dimanche de cette semaine
     const sunday = new Date(monday);
     sunday.setDate(monday.getDate() + 6);
-    sunday.setHours(23, 59, 59, 999);
-    return sunday;
+
+    return {
+        startDate: monday,
+        endDate: sunday,
+    };
 };
 
-const themes = [
+// Données des thèmes pour 2026
+const themesData = [
+    // Janvier 2026
     {
-        title: "Mode d'Hiver",
-        emoji: '🧥',
-        description: "Échangez vos vêtements d'hiver : manteaux, pulls, écharpes et bonnets pour rester au chaud !",
-        categories: ['vêtements'],
-        weeksFromNow: -2,
+        name: 'Vêtements d\'hiver',
+        description: 'Manteaux, écharpes, pulls, bonnets - Échangez vos vêtements chauds pour affronter l\'hiver ensemble !',
+        icon: '🧥',
+        weekNumber: 1,
+        year: 2026,
+        categories: ['vêtements', 'accessoires', 'mode'],
     },
     {
-        title: 'Tech & Gadgets',
-        emoji: '📱',
-        description: "Donnez une seconde vie à vos appareils électroniques, accessoires et gadgets tech !",
-        categories: ['électronique', 'multimédia'],
-        weeksFromNow: -1,
+        name: 'Livres et Magazines',
+        description: 'Romans, essais, BD, magazines - Partagez vos lectures et découvrez de nouvelles histoires !',
+        icon: '📚',
+        weekNumber: 2,
+        year: 2026,
+        categories: ['livres', 'magazines', 'culture'],
     },
     {
-        title: 'Lecture & Culture',
-        emoji: '📚',
-        description: "Partagez vos livres, BD, mangas et magazines préférés avec la communauté !",
-        categories: ['livres', 'multimédia'],
-        weeksFromNow: 0, // Semaine actuelle
+        name: 'Électronique et Tech',
+        description: 'Gadgets, câbles, accessoires tech - Donnez une seconde vie à vos appareils électroniques !',
+        icon: '💻',
+        weekNumber: 3,
+        year: 2026,
+        categories: ['électronique', 'tech', 'gadgets'],
     },
     {
-        title: 'Maison & Déco',
-        emoji: '🏠',
-        description: "Échangez vos objets de décoration, meubles et accessoires pour la maison !",
-        categories: ['meubles', 'décoration'],
-        weeksFromNow: 1,
+        name: 'Mobilier et Déco',
+        description: 'Meubles, lampes, objets de décoration - Renouvelez votre intérieur de façon responsable !',
+        icon: '🪑',
+        weekNumber: 4,
+        year: 2026,
+        categories: ['mobilier', 'décoration', 'maison'],
+    },
+    // Février 2026
+    {
+        name: 'Sport et Bien-être',
+        description: 'Équipements sportifs, yoga, fitness - Bougez et prenez soin de vous !',
+        icon: '⚽',
+        weekNumber: 5,
+        year: 2026,
+        categories: ['sport', 'fitness', 'bien-être'],
     },
     {
-        title: 'Sport & Bien-être',
-        emoji: '⚽',
-        description: "Équipements sportifs, accessoires de fitness et articles de bien-être vous attendent !",
-        categories: ['sport'],
-        weeksFromNow: 2,
+        name: 'Saint-Valentin',
+        description: 'Bijoux, parfums, cadeaux romantiques - Trouvez le cadeau parfait !',
+        icon: '💝',
+        weekNumber: 6,
+        year: 2026,
+        categories: ['cadeaux', 'bijoux', 'romantique'],
     },
     {
-        title: 'Jouets & Enfants',
-        emoji: '🧸',
-        description: "Faites plaisir aux enfants en échangeant jouets, jeux et articles pour les petits !",
-        categories: ['jouets'],
-        weeksFromNow: 3,
+        name: 'Cuisine et Gastronomie',
+        description: 'Ustensiles, appareils de cuisine, livres de recettes - Pour les passionnés de cuisine !',
+        icon: '🍳',
+        weekNumber: 7,
+        year: 2026,
+        categories: ['cuisine', 'ustensiles', 'gastronomie'],
     },
     {
-        title: 'Cuisine & Gourmandise',
-        emoji: '🍳',
-        description: "Ustensiles de cuisine, électroménager et accessoires culinaires à échanger !",
-        categories: ['cuisine', 'électronique'],
-        weeksFromNow: 4,
+        name: 'Jeux et Jouets',
+        description: 'Jeux de société, puzzles, jouets - Partagez des moments de jeu en famille !',
+        icon: '🎲',
+        weekNumber: 8,
+        year: 2026,
+        categories: ['jeux', 'jouets', 'famille'],
+    },
+    // Mars 2026
+    {
+        name: 'Printemps et Jardinage',
+        description: 'Outils de jardin, plantes, pots - Préparez le printemps !',
+        icon: '🌱',
+        weekNumber: 9,
+        year: 2026,
+        categories: ['jardin', 'plantes', 'extérieur'],
     },
     {
-        title: 'Jardin & Extérieur',
-        emoji: '🌱',
-        description: "Outils de jardinage, plantes, pots et mobilier d'extérieur pour les amoureux du vert !",
-        categories: ['jardin', 'outils'],
-        weeksFromNow: 5,
+        name: 'Musique et Instruments',
+        description: 'Instruments, vinyles, matériel audio - Pour les mélomanes !',
+        icon: '🎸',
+        weekNumber: 10,
+        year: 2026,
+        categories: ['musique', 'instruments', 'audio'],
     },
     {
-        title: 'Bricolage & DIY',
-        emoji: '🔧',
-        description: "Outils, matériaux et équipements pour vos projets de bricolage !",
-        categories: ['outils'],
-        weeksFromNow: 6,
+        name: 'Art et Créativité',
+        description: 'Fournitures artistiques, tableaux, créations - Exprimez votre créativité !',
+        icon: '🎨',
+        weekNumber: 11,
+        year: 2026,
+        categories: ['art', 'créativité', 'loisirs'],
     },
     {
-        title: 'Tout est permis !',
-        emoji: '🎉',
-        description: "Semaine spéciale : toutes les catégories sont mises à l'honneur !",
-        categories: ['vêtements', 'électronique', 'livres', 'meubles', 'décoration', 'jouets', 'sport', 'outils', 'cuisine', 'jardin', 'multimédia', 'autre'],
-        weeksFromNow: 7,
+        name: 'Vêtements de mi-saison',
+        description: 'Vestes légères, pulls, chemises - La transition vers le printemps !',
+        icon: '🧥',
+        weekNumber: 12,
+        year: 2026,
+        categories: ['vêtements', 'mode', 'mi-saison'],
+    },
+    // Avril 2026
+    {
+        name: 'Pâques et Fêtes',
+        description: 'Décorations de Pâques, chocolats, cadeaux festifs !',
+        icon: '🐰',
+        weekNumber: 13,
+        year: 2026,
+        categories: ['fêtes', 'décoration', 'cadeaux'],
+    },
+    {
+        name: 'Bricolage et Outillage',
+        description: 'Outils, matériaux, équipements - Pour les bricoleurs !',
+        icon: '🔧',
+        weekNumber: 14,
+        year: 2026,
+        categories: ['bricolage', 'outils', 'maison'],
+    },
+    {
+        name: 'Photographie',
+        description: 'Appareils photo, objectifs, accessoires - Capturez vos moments !',
+        icon: '📷',
+        weekNumber: 15,
+        year: 2026,
+        categories: ['photo', 'vidéo', 'tech'],
+    },
+    {
+        name: 'Vélos et Mobilité',
+        description: 'Vélos, trottinettes, accessoires - Mobilité douce et écologique !',
+        icon: '🚲',
+        weekNumber: 16,
+        year: 2026,
+        categories: ['vélo', 'mobilité', 'sport'],
+    },
+    // Mai 2026
+    {
+        name: 'Fête des Mères',
+        description: 'Bijoux, parfums, cadeaux pour maman !',
+        icon: '💐',
+        weekNumber: 17,
+        year: 2026,
+        categories: ['cadeaux', 'bijoux', 'fête'],
+    },
+    {
+        name: 'Plein Air et Camping',
+        description: 'Tentes, sacs de couchage, équipement outdoor !',
+        icon: '⛺',
+        weekNumber: 18,
+        year: 2026,
+        categories: ['camping', 'outdoor', 'nature'],
+    },
+    {
+        name: 'Bébé et Puériculture',
+        description: 'Vêtements bébé, poussettes, jouets d\'éveil !',
+        icon: '👶',
+        weekNumber: 19,
+        year: 2026,
+        categories: ['bébé', 'enfants', 'puériculture'],
+    },
+    {
+        name: 'Mode Été',
+        description: 'Maillots, shorts, robes d\'été - Préparez l\'été !',
+        icon: '👗',
+        weekNumber: 20,
+        year: 2026,
+        categories: ['vêtements', 'été', 'mode'],
+    },
+    // Juin 2026
+    {
+        name: 'Fête des Pères',
+        description: 'Outils, gadgets, cadeaux pour papa !',
+        icon: '👔',
+        weekNumber: 21,
+        year: 2026,
+        categories: ['cadeaux', 'outils', 'fête'],
+    },
+    {
+        name: 'Fête de la Musique',
+        description: 'Instruments, vinyles, matériel audio - Célébrez la musique !',
+        icon: '🎵',
+        weekNumber: 22,
+        year: 2026,
+        categories: ['musique', 'instruments', 'fête'],
+    },
+    {
+        name: 'Été et Plage',
+        description: 'Parasols, serviettes, jeux de plage - Direction la mer !',
+        icon: '🏖️',
+        weekNumber: 23,
+        year: 2026,
+        categories: ['plage', 'été', 'vacances'],
+    },
+    {
+        name: 'Vintage et Rétro',
+        description: 'Objets vintage, vêtements rétro, déco d\'époque !',
+        icon: '📻',
+        weekNumber: 24,
+        year: 2026,
+        categories: ['vintage', 'rétro', 'collection'],
     },
 ];
 
-async function seedThemes() {
-    try {
-        await mongoose.connect(MONGODB_URI);
-        console.log('✅ Connecté à MongoDB');
+// Fonction principale de seed
+const seedThemes = async () => {
+    await connectDB();
 
-        // Supprimer les anciens thèmes (optionnel)
-        const deleteExisting = process.argv.includes('--clean');
-        if (deleteExisting) {
-            await WeeklyTheme.deleteMany({});
-            console.log('🗑️ Anciens thèmes supprimés');
-        }
+    const cleanMode = process.argv.includes('--clean');
 
-        console.log('\n📅 Création des thèmes...\n');
-
-        for (const themeData of themes) {
-            const monday = getMonday(themeData.weeksFromNow);
-            const sunday = getSunday(monday);
-
-            // Vérifier si un thème existe déjà pour cette période
-            const existing = await WeeklyTheme.findOne({
-                startDate: monday,
-            });
-
-            if (existing) {
-                console.log(`⏭️  "${themeData.title}" existe déjà pour la semaine du ${monday.toLocaleDateString('fr-FR')}`);
-                continue;
-            }
-
-            const theme = await WeeklyTheme.create({
-                title: themeData.title,
-                emoji: themeData.emoji,
-                description: themeData.description,
-                categories: themeData.categories,
-                startDate: monday,
-                endDate: sunday,
-                isActive: themeData.weeksFromNow === 0, // Actif seulement pour la semaine actuelle
-            });
-
-            const status = themeData.weeksFromNow < 0 ? '(passé)' : themeData.weeksFromNow === 0 ? '(actuel) ✅' : '(à venir)';
-            console.log(`${themeData.emoji} "${theme.title}" - ${monday.toLocaleDateString('fr-FR')} au ${sunday.toLocaleDateString('fr-FR')} ${status}`);
-        }
-
-        console.log('\n✅ Thèmes créés avec succès !');
-
-        // Afficher un résumé
-        const total = await WeeklyTheme.countDocuments();
-        const active = await WeeklyTheme.countDocuments({ isActive: true });
-        console.log(`\n📊 Résumé: ${total} thèmes au total, ${active} actif(s)`);
-
-        process.exit(0);
-    } catch (error) {
-        console.error('❌ Erreur:', error);
-        process.exit(1);
+    if (cleanMode) {
+        console.log('🧹 Suppression des anciens thèmes...');
+        await Theme.deleteMany({});
+        console.log('✅ Anciens thèmes supprimés');
     }
-}
 
-seedThemes();
+    console.log('🌱 Création des thèmes...');
+
+    let created = 0;
+    let skipped = 0;
+
+    for (const themeData of themesData) {
+        const { weekNumber, year, ...rest } = themeData;
+        const { startDate, endDate } = getWeekDates(year, weekNumber);
+
+        // Vérifier si le thème existe déjà
+        const existing = await Theme.findOne({
+            name: rest.name,
+            startDate: { $gte: new Date(year, 0, 1), $lt: new Date(year + 1, 0, 1) },
+        });
+
+        if (existing && !cleanMode) {
+            console.log(`⏭️  Thème "${rest.name}" existe déjà, ignoré`);
+            skipped++;
+            continue;
+        }
+
+        const theme = await Theme.create({
+            ...rest,
+            startDate,
+            endDate,
+        });
+
+        console.log(`✅ Créé: ${theme.name} (Semaine ${weekNumber} - ${theme.dateRange})`);
+        created++;
+    }
+
+    console.log('\n📊 Résumé:');
+    console.log(`   - ${created} thèmes créés`);
+    console.log(`   - ${skipped} thèmes ignorés (déjà existants)`);
+
+    // Afficher le thème actuel
+    const now = new Date();
+    const currentTheme = await Theme.findOne({
+        isActive: true,
+        startDate: { $lte: now },
+        endDate: { $gte: now },
+    });
+
+    if (currentTheme) {
+        console.log(`\n🎯 Thème actuel: ${currentTheme.icon} ${currentTheme.name}`);
+        console.log(`   ${currentTheme.dateRange}`);
+    }
+
+    await mongoose.connection.close();
+    console.log('\n✅ Seed terminé !');
+    process.exit(0);
+};
+
+// Exécuter le seed
+seedThemes().catch((error) => {
+    console.error('❌ Erreur seed:', error);
+    process.exit(1);
+});

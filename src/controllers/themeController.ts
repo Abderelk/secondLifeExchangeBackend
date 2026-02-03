@@ -1,347 +1,354 @@
-// src/controllers/themeController.ts
+// BACKEND/src/controllers/themeController.ts
 
 import { Request, Response } from 'express';
-import WeeklyTheme from '../models/weeklyTheme';
-import User from '../models/User';
-import { AuthRequest } from '../types';
-import { sendThemeNotificationEmail } from '../services/notificationsService';
+import Theme, { IThemeResponse } from '../models/theme';
 
-// Obtenir le thème actuel
-export const getCurrentTheme = async (_req: Request, res: Response): Promise<void> => {
+// Helper pour formater la réponse d'un thème
+const formatThemeResponse = (theme: any): IThemeResponse => {
+  const themeObj = theme.toObject({ virtuals: true });
+  return {
+    _id: themeObj._id.toString(),
+    name: themeObj.name,
+    description: themeObj.description,
+    icon: themeObj.icon,
+    startDate: themeObj.startDate,
+    endDate: themeObj.endDate,
+    categories: themeObj.categories,
+    isActive: themeObj.isActive,
+    status: themeObj.status,
+    weekNumber: themeObj.weekNumber,
+    daysRemaining: themeObj.daysRemaining,
+    dateRange: themeObj.dateRange,
+    createdAt: themeObj.createdAt,
+    updatedAt: themeObj.updatedAt,
+  };
+};
+
+// GET /api/themes - Récupérer tous les thèmes
+export const getAllThemes = async (req: Request, res: Response) => {
   try {
-    const now = new Date();
-    const currentTheme = await WeeklyTheme.findOne({
-      startDate: { $lte: now },
-      endDate: { $gte: now },
-      isActive: true,
-    });
+    const { year, month, status, limit } = req.query;
 
-    if (!currentTheme) {
-      res.status(404).json({ success: false, message: 'Aucun thème actif cette semaine' });
-      return;
+    const query: any = { isActive: true };
+
+    // Filtre par année
+    if (year) {
+      const yearNum = parseInt(year as string);
+      query.startDate = {
+        $gte: new Date(yearNum, 0, 1),
+        $lt: new Date(yearNum + 1, 0, 1),
+      };
     }
 
-    // Calculer les jours restants
-    const endDate = new Date(currentTheme.endDate);
-    const daysRemaining = Math.ceil((endDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+    // Filtre par mois
+    if (month && year) {
+      const yearNum = parseInt(year as string);
+      const monthNum = parseInt(month as string) - 1;
+      query.startDate = {
+        $gte: new Date(yearNum, monthNum, 1),
+        $lt: new Date(yearNum, monthNum + 1, 1),
+      };
+    }
 
-    res.json({
+    let themes = await Theme.find(query)
+      .sort({ startDate: 1 })
+      .limit(limit ? parseInt(limit as string) : 52);
+
+    // Filtre par statut (calculé côté serveur)
+    if (status) {
+      const now = new Date();
+      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+      themes = themes.filter((theme) => {
+        const start = new Date(theme.startDate);
+        const end = new Date(theme.endDate);
+        const startNorm = new Date(start.getFullYear(), start.getMonth(), start.getDate());
+        const endNorm = new Date(end.getFullYear(), end.getMonth(), end.getDate());
+
+        if (status === 'past') return today > endNorm;
+        if (status === 'current') return today >= startNorm && today <= endNorm;
+        if (status === 'upcoming') return today < startNorm;
+        return true;
+      });
+    }
+
+    const formattedThemes = themes.map(formatThemeResponse);
+
+    res.status(200).json({
       success: true,
-      data: {
-        ...currentTheme.toObject(),
-        daysRemaining,
-      },
+      count: formattedThemes.length,
+      data: formattedThemes,
     });
-  } catch (error: unknown) {
-    const err = error as Error;
-    console.error('❌ Erreur getCurrentTheme:', err.message);
-    res.status(500).json({ success: false, message: 'Erreur serveur' });
+  } catch (error) {
+    console.error('Erreur getAllThemes:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Erreur serveur lors de la récupération des thèmes',
+    });
   }
 };
 
-// Obtenir le calendrier des thèmes (passés, actuels, futurs)
-export const getThemeCalendar = async (req: Request, res: Response): Promise<void> => {
+// GET /api/themes/current - Récupérer le thème actuel
+export const getCurrentTheme = async (req: Request, res: Response) => {
   try {
-    const { month, year } = req.query;
     const now = new Date();
-    
-    let startDate: Date;
-    let endDate: Date;
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
-    if (month && year) {
-      // Filtrer par mois spécifique
-      startDate = new Date(Number(year), Number(month) - 1, 1);
-      endDate = new Date(Number(year), Number(month), 0, 23, 59, 59);
-    } else {
-      // Par défaut: 3 mois passés + 3 mois futurs
-      startDate = new Date(now.getFullYear(), now.getMonth() - 3, 1);
-      endDate = new Date(now.getFullYear(), now.getMonth() + 4, 0);
+    const theme = await Theme.findOne({
+      isActive: true,
+      startDate: { $lte: today },
+      endDate: { $gte: today },
+    });
+
+    if (!theme) {
+      const nextTheme = await Theme.findOne({
+        isActive: true,
+        startDate: { $gt: today },
+      }).sort({ startDate: 1 });
+
+      if (nextTheme) {
+        return res.status(200).json({
+          success: true,
+          data: formatThemeResponse(nextTheme),
+          message: 'Aucun thème actuel, voici le prochain',
+        });
+      }
+
+      return res.status(404).json({
+        success: false,
+        message: 'Aucun thème actuel ou à venir',
+      });
     }
 
-    const themes = await WeeklyTheme.find({
+    res.status(200).json({
+      success: true,
+      data: formatThemeResponse(theme),
+    });
+  } catch (error) {
+    console.error('Erreur getCurrentTheme:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Erreur serveur',
+    });
+  }
+};
+
+// GET /api/themes/calendar - Calendrier des thèmes
+export const getCalendar = async (req: Request, res: Response) => {
+  try {
+    const { year } = req.query;
+    const currentYear = year ? parseInt(year as string) : new Date().getFullYear();
+
+    const themes = await Theme.find({
+      isActive: true,
       $or: [
-        { startDate: { $gte: startDate, $lte: endDate } },
-        { endDate: { $gte: startDate, $lte: endDate } },
+        { startDate: { $gte: new Date(currentYear, 0, 1), $lt: new Date(currentYear + 1, 0, 1) } },
+        { endDate: { $gte: new Date(currentYear, 0, 1), $lt: new Date(currentYear + 1, 0, 1) } },
       ],
     }).sort({ startDate: 1 });
 
-    // Marquer le thème actuel
-    const themesWithStatus = themes.map(theme => {
-      const themeStart = new Date(theme.startDate);
-      const themeEnd = new Date(theme.endDate);
-      
-      let status: 'past' | 'current' | 'upcoming';
-      if (themeEnd < now) {
-        status = 'past';
-      } else if (themeStart <= now && themeEnd >= now) {
-        status = 'current';
-      } else {
-        status = 'upcoming';
-      }
+    const formattedThemes = themes.map(formatThemeResponse);
 
-      return {
-        ...theme.toObject(),
-        status,
-      };
-    });
-
-    res.json({
+    res.status(200).json({
       success: true,
-      data: themesWithStatus,
+      year: currentYear,
+      count: formattedThemes.length,
+      data: formattedThemes,
     });
-  } catch (error: unknown) {
-    const err = error as Error;
-    console.error('❌ Erreur getThemeCalendar:', err.message);
-    res.status(500).json({ success: false, message: 'Erreur serveur' });
+  } catch (error) {
+    console.error('Erreur getCalendar:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Erreur serveur',
+    });
   }
 };
 
-// Obtenir les prochains thèmes
-export const getUpcomingThemes = async (_req: Request, res: Response): Promise<void> => {
+// GET /api/themes/upcoming - Prochains thèmes
+export const getUpcomingThemes = async (req: Request, res: Response) => {
   try {
+    const { limit = '5' } = req.query;
     const now = new Date();
-    
-    const upcomingThemes = await WeeklyTheme.find({
-      startDate: { $gt: now },
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+    const themes = await Theme.find({
       isActive: true,
+      startDate: { $gt: today },
     })
       .sort({ startDate: 1 })
-      .limit(4);
+      .limit(parseInt(limit as string));
 
-    res.json({
+    const formattedThemes = themes.map(formatThemeResponse);
+
+    res.status(200).json({
       success: true,
-      data: upcomingThemes,
+      count: formattedThemes.length,
+      data: formattedThemes,
     });
-  } catch (error: unknown) {
-    const err = error as Error;
-    console.error('❌ Erreur getUpcomingThemes:', err.message);
-    res.status(500).json({ success: false, message: 'Erreur serveur' });
+  } catch (error) {
+    console.error('Erreur getUpcomingThemes:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Erreur serveur',
+    });
   }
 };
 
-// Créer un nouveau thème (Admin)
-export const createTheme = async (req: AuthRequest, res: Response): Promise<void> => {
+// GET /api/themes/:id - Récupérer un thème par ID
+export const getThemeById = async (req: Request, res: Response) => {
   try {
-    const user = await User.findById(req.user?.id);
-    if (!user || user.role !== 'admin') {
-      res.status(403).json({ success: false, message: 'Accès refusé' });
-      return;
-    }
+    const theme = await Theme.findById(req.params.id);
 
-    const { title, emoji, description, categories, startDate, endDate, isActive } = req.body;
-
-    // Vérifier qu'il n'y a pas de chevauchement avec un autre thème actif
-    if (isActive) {
-      const overlapping = await WeeklyTheme.findOne({
-        isActive: true,
-        $or: [
-          { startDate: { $lte: new Date(endDate) }, endDate: { $gte: new Date(startDate) } },
-        ],
+    if (!theme) {
+      return res.status(404).json({
+        success: false,
+        message: 'Thème non trouvé',
       });
-
-      if (overlapping) {
-        res.status(400).json({
-          success: false,
-          message: 'Un autre thème actif existe déjà pour cette période',
-        });
-        return;
-      }
     }
 
-    const theme = await WeeklyTheme.create({
-      title,
-      emoji,
+    res.status(200).json({
+      success: true,
+      data: formatThemeResponse(theme),
+    });
+  } catch (error) {
+    console.error('Erreur getThemeById:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Erreur serveur',
+    });
+  }
+};
+
+// POST /api/themes - Créer un thème (Admin)
+export const createTheme = async (req: Request, res: Response) => {
+  try {
+    const { name, description, icon, startDate, endDate, categories } = req.body;
+
+    // Vérifier le chevauchement de dates
+    const overlapping = await Theme.findOne({
+      isActive: true,
+      $or: [{ startDate: { $lte: endDate }, endDate: { $gte: startDate } }],
+    });
+
+    if (overlapping) {
+      const overlappingFormatted = formatThemeResponse(overlapping);
+      return res.status(400).json({
+        success: false,
+        message: `Ce thème chevauche "${overlapping.name}" (${overlappingFormatted.dateRange})`,
+      });
+    }
+
+    const theme = await Theme.create({
+      name,
       description,
-      categories,
+      icon,
       startDate: new Date(startDate),
       endDate: new Date(endDate),
-      isActive: isActive ?? true,
+      categories: categories || [],
     });
 
     res.status(201).json({
       success: true,
-      message: 'Thème créé avec succès ! 🎉',
-      data: theme,
+      data: formatThemeResponse(theme),
     });
-  } catch (error: unknown) {
-    const err = error as Error;
-    console.error('❌ Erreur createTheme:', err.message);
-    res.status(500).json({ success: false, message: 'Erreur serveur' });
+  } catch (error: any) {
+    console.error('Erreur createTheme:', error);
+    if (error.name === 'ValidationError') {
+      const messages = Object.values(error.errors).map((err: any) => err.message);
+      return res.status(400).json({
+        success: false,
+        message: messages.join(', '),
+      });
+    }
+    res.status(500).json({
+      success: false,
+      message: 'Erreur serveur',
+    });
   }
 };
 
-// Mettre à jour un thème (Admin)
-export const updateTheme = async (req: AuthRequest, res: Response): Promise<void> => {
+// PUT /api/themes/:id - Mettre à jour un thème (Admin)
+export const updateTheme = async (req: Request, res: Response) => {
   try {
-    const user = await User.findById(req.user?.id);
-    if (!user || user.role !== 'admin') {
-      res.status(403).json({ success: false, message: 'Accès refusé' });
-      return;
-    }
+    const { name, description, icon, startDate, endDate, categories, isActive } = req.body;
 
-    const { id } = req.params;
-    const updates = req.body;
-
-    const theme = await WeeklyTheme.findByIdAndUpdate(id, updates, {
-      new: true,
-      runValidators: true,
-    });
+    const theme = await Theme.findById(req.params.id);
 
     if (!theme) {
-      res.status(404).json({ success: false, message: 'Thème non trouvé' });
-      return;
+      return res.status(404).json({
+        success: false,
+        message: 'Thème non trouvé',
+      });
     }
 
-    res.json({
-      success: true,
-      message: 'Thème mis à jour ! ✅',
-      data: theme,
-    });
-  } catch (error: unknown) {
-    const err = error as Error;
-    console.error('❌ Erreur updateTheme:', err.message);
-    res.status(500).json({ success: false, message: 'Erreur serveur' });
-  }
-};
+    // Vérifier le chevauchement si les dates changent
+    if (startDate || endDate) {
+      const newStart = startDate ? new Date(startDate) : theme.startDate;
+      const newEnd = endDate ? new Date(endDate) : theme.endDate;
 
-// Supprimer un thème (Admin)
-export const deleteTheme = async (req: AuthRequest, res: Response): Promise<void> => {
-  try {
-    const user = await User.findById(req.user?.id);
-    if (!user || user.role !== 'admin') {
-      res.status(403).json({ success: false, message: 'Accès refusé' });
-      return;
-    }
+      const overlapping = await Theme.findOne({
+        _id: { $ne: theme._id },
+        isActive: true,
+        $or: [{ startDate: { $lte: newEnd }, endDate: { $gte: newStart } }],
+      });
 
-    const { id } = req.params;
-
-    const theme = await WeeklyTheme.findByIdAndDelete(id);
-
-    if (!theme) {
-      res.status(404).json({ success: false, message: 'Thème non trouvé' });
-      return;
-    }
-
-    res.json({
-      success: true,
-      message: 'Thème supprimé ! 🗑️',
-    });
-  } catch (error: unknown) {
-    const err = error as Error;
-    console.error('❌ Erreur deleteTheme:', err.message);
-    res.status(500).json({ success: false, message: 'Erreur serveur' });
-  }
-};
-
-// Envoyer les notifications pour un nouveau thème (Admin ou Cron)
-export const sendThemeNotifications = async (req: AuthRequest, res: Response): Promise<void> => {
-  try {
-    const user = await User.findById(req.user?.id);
-    if (!user || user.role !== 'admin') {
-      res.status(403).json({ success: false, message: 'Accès refusé' });
-      return;
-    }
-
-    const { themeId } = req.params;
-
-    const theme = await WeeklyTheme.findById(themeId);
-    if (!theme) {
-      res.status(404).json({ success: false, message: 'Thème non trouvé' });
-      return;
-    }
-
-    // Trouver tous les utilisateurs qui ont activé les notifications de thème
-    const usersToNotify = await User.find({
-      'notifications.email': true,
-      'notifications.weeklyTheme': true,
-    }).select('email firstName');
-
-    console.log(`📧 Envoi des notifications à ${usersToNotify.length} utilisateurs...`);
-
-    let sent = 0;
-    let failed = 0;
-
-    for (const recipient of usersToNotify) {
-      try {
-        await sendThemeNotificationEmail(recipient, theme);
-        sent++;
-      } catch (err) {
-        console.error(`❌ Erreur envoi email à ${recipient.email}:`, err);
-        failed++;
+      if (overlapping) {
+        return res.status(400).json({
+          success: false,
+          message: `Ce thème chevaucherait "${overlapping.name}"`,
+        });
       }
     }
 
-    res.json({
+    // Mise à jour des champs
+    if (name) theme.name = name;
+    if (description) theme.description = description;
+    if (icon) theme.icon = icon;
+    if (startDate) theme.startDate = new Date(startDate);
+    if (endDate) theme.endDate = new Date(endDate);
+    if (categories) theme.categories = categories;
+    if (typeof isActive === 'boolean') theme.isActive = isActive;
+
+    await theme.save();
+
+    res.status(200).json({
       success: true,
-      message: `Notifications envoyées ! ✅`,
-      data: {
-        total: usersToNotify.length,
-        sent,
-        failed,
-      },
+      data: formatThemeResponse(theme),
     });
-  } catch (error: unknown) {
-    const err = error as Error;
-    console.error('❌ Erreur sendThemeNotifications:', err.message);
-    res.status(500).json({ success: false, message: 'Erreur serveur' });
+  } catch (error) {
+    console.error('Erreur updateTheme:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Erreur serveur',
+    });
   }
 };
 
-// Mettre à jour les préférences de notification (User)
-export const updateNotificationPreferences = async (req: AuthRequest, res: Response): Promise<void> => {
+// DELETE /api/themes/:id - Supprimer un thème (Admin)
+export const deleteTheme = async (req: Request, res: Response) => {
   try {
-    const userId = req.user?.id;
-    const { weeklyTheme, email, newMessages, exchangeUpdates } = req.body;
+    const theme = await Theme.findById(req.params.id);
 
-    const user = await User.findByIdAndUpdate(
-      userId,
-      {
-        $set: {
-          'notifications.weeklyTheme': weeklyTheme,
-          'notifications.email': email,
-          'notifications.newMessages': newMessages,
-          'notifications.exchangeUpdates': exchangeUpdates,
-        },
-      },
-      { new: true }
-    ).select('notifications');
-
-    if (!user) {
-      res.status(404).json({ success: false, message: 'Utilisateur non trouvé' });
-      return;
+    if (!theme) {
+      return res.status(404).json({
+        success: false,
+        message: 'Thème non trouvé',
+      });
     }
 
-    res.json({
+    // Soft delete
+    theme.isActive = false;
+    await theme.save();
+
+    res.status(200).json({
       success: true,
-      message: 'Préférences mises à jour ! ✅',
-      data: user.notifications,
+      message: 'Thème supprimé avec succès',
     });
-  } catch (error: unknown) {
-    const err = error as Error;
-    console.error('❌ Erreur updateNotificationPreferences:', err.message);
-    res.status(500).json({ success: false, message: 'Erreur serveur' });
-  }
-};
-
-// Obtenir les préférences de notification (User)
-export const getNotificationPreferences = async (req: AuthRequest, res: Response): Promise<void> => {
-  try {
-    const userId = req.user?.id;
-
-    const user = await User.findById(userId).select('notifications');
-
-    if (!user) {
-      res.status(404).json({ success: false, message: 'Utilisateur non trouvé' });
-      return;
-    }
-
-    res.json({
-      success: true,
-      data: user.notifications,
+  } catch (error) {
+    console.error('Erreur deleteTheme:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Erreur serveur',
     });
-  } catch (error: unknown) {
-    const err = error as Error;
-    console.error('❌ Erreur getNotificationPreferences:', err.message);
-    res.status(500).json({ success: false, message: 'Erreur serveur' });
   }
 };
