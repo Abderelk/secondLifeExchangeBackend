@@ -1,5 +1,11 @@
 import { Request } from 'express';
 
+export interface AuthRequest extends Request {
+  user?: {
+    id: string;
+  };
+}
+
 export interface IUser {
   _id?: string;
   firstName: string;
@@ -31,8 +37,3 @@ export interface IUser {
   updatedAt?: Date;
 }
 
-export interface AuthRequest extends Request {
-  user?: {
-    id: string;
-  };
-}
