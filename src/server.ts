@@ -15,6 +15,7 @@ import itemRoutes from './routes/itemRoutes';
 import homeRoutes from './routes/homeRoutes';
 import exchangeRoutes from './routes/exchangeRoutes';
 import messageRoutes from './routes/messageRoutes';
+import uploadRoutes from './routes/uploadRoutes'
 import suggestionsRoutes from './routes/suggestionsRoutes';
 import themeRoutes from './routes/themeRoutes';
 import { initCronJobs } from './services/cronService';
@@ -56,6 +57,8 @@ app.use('/api/exchanges', exchangeRoutes);
 app.use('/api/messages', messageRoutes);
 app.use('/api/suggestions', suggestionsRoutes);
 app.use('/api/themes', themeRoutes);
+app.use('/api/upload', uploadRoutes
+);
 
 // Error handler
 app.use((err: Error, req: express.Request, res: express.Response, _next: express.NextFunction) => {
@@ -73,10 +76,10 @@ mongoose
   .connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/secondlifeexchange')
   .then(() => {
     console.log('✅ MongoDB connecté');
-    
+
     // Initialiser les tâches cron pour les notifications de thèmes
     initCronJobs();
-    
+
     httpServer.listen(PORT, () => {
       console.log('='.repeat(50));
       console.log(`🚀 Serveur lancé sur http://localhost:${PORT}`);
